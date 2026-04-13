@@ -1,0 +1,43 @@
+name: 'Consensia AI Reviewer'
+description: 'Automated PR Code Review using THE JUDGE AI'
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+inputs:
+  api-key:
+    description: 'Consensia CLI API Key'
+    required: true
+  github-token:
+    description: 'GitHub token for posting comments'
+    required: true
+  mode:
+    description: 'Review mode (ECONOMY, BALANCED, MAX_POWER)'
+    required: false
+    default: 'BALANCED'
+  api-url:
+    description: 'Custom API URL (for self-hosting or testing)'
+    required: false
+    default: 'https://api.consensia.world/cli/analyze-diff' 
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: pip install requests
+      shell: bash
+
+    - name: Run Consensia Review
+      env:
+        CONSENSIA_API_KEY: ${{ inputs.api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MODE: ${{ inputs.mode }}
+        API_URL: ${{ inputs.api-url }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        REPO: ${{ github.repository }}
+        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+      run: python ${{ github.action_path }}/review.py
+      shell: bash
