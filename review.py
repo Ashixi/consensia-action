@@ -21,6 +21,7 @@ def main():
     commit_sha = os.environ.get("COMMIT_SHA")
     api_url = os.environ.get("API_URL")
     mode = os.environ.get("MODE", "BALANCED")
+    rounds = int(os.environ.get("ROUNDS", 2))
 
     if not all([api_key, gh_token, repo, pr_number, commit_sha]):
         print("Missing required environment variables.")
@@ -31,11 +32,11 @@ def main():
         print("No changes found in diff. Skipping review.")
         sys.exit(0)
 
-    print(f"Sending diff ({len(diff_text)} chars) to Consensia API ({mode} mode)...")
+    print(f"Sending diff ({len(diff_text)} chars) to Consensia API ({mode} mode, {rounds} rounds)...")
     
     response = requests.post(
         api_url,
-        json={"diff_text": diff_text, "mode": mode, "scenario": "CODE_REVIEW"},
+        json={"diff_text": diff_text, "mode": mode, "scenario": "CODE_REVIEW", "rounds": rounds},
         headers={"x-api-key": api_key, "Content-Type": "application/json"}
     )
     
