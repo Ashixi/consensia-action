@@ -3,6 +3,9 @@ import sys
 import json
 import requests
 import subprocess
+import asyncio
+import websockets
+from urllib.parse import urlparse
 
 def get_diff(target_type):
     if target_type == "pr":
@@ -16,15 +19,69 @@ def get_diff(target_type):
             capture_output=True, text=True, check=True
         )
     elif target_type == "commit":
-        result = subprocess.run(
-            ["git", "diff", "HEAD~1", "HEAD"], 
-            capture_output=True, text=True, check=True
-        )
+        try:
+            result = subprocess.run(
+                ["git", "diff", "HEAD~1", "HEAD"], 
+                capture_output=True, text=True, check=True
+            )
+        except subprocess.CalledProcessError:
+            EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+            result = subprocess.run(
+                ["git", "diff", EMPTY_TREE_HASH, "HEAD"], 
+                capture_output=True, text=True, check=True
+            )
     else:
         print(f"Error: Unknown target type '{target_type}'. Use 'pr' or 'commit'.")
         sys.exit(1)
         
     return result.stdout.strip()
+
+async def analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds):
+    print(f"Connecting to WebSocket: {ws_url}")
+    
+    async with websockets.connect(ws_url) as websocket:
+        init_data = {
+            "token": api_key, 
+            "mode": mode,
+            "scenario": "CODE_REVIEW",
+            "code": diff_text,
+            "rounds": rounds
+        }
+        await websocket.send(json.dumps(init_data))
+
+        final_verdict = None
+        tokens_used = 0
+
+        while True:
+            try:
+                response_str = await websocket.recv()
+                event = json.loads(response_str)
+                event_type = event.get("type")
+
+                if event_type == "ping":
+                    continue 
+                elif event_type == "system":
+                    print(f"🖥️ System: {event.get('msg')}")
+                elif event_type == "state_update":
+                    status = event.get("data", {}).get("session_status", "processing")
+                    tokens_data = event.get("data", {}).get("tokens", {})
+                    tokens_used = tokens_data.get("prompt", 0) + tokens_data.get("completion", 0)
+                elif event_type == "agent_usage":
+                    usage = event.get("usage", {})
+                    agent = event.get("agent", "Agent")
+                    print(f"🤖 {agent} finished (Tokens: {usage.get('prompt', 0) + usage.get('completion', 0)})")
+                elif event_type == "final_verdict":
+                    final_verdict = event.get("content")
+                    break
+                elif event_type == "error":
+                    print(f"❌ API Error: {event.get('msg') or event.get('content')}")
+                    sys.exit(1)
+
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"❌ WebSocket connection closed unexpectedly: {e}")
+                sys.exit(1)
+
+        return final_verdict, tokens_used
 
 def main():
     api_key = os.environ.get("CONSENSIA_API_KEY")
@@ -34,7 +91,7 @@ def main():
     target = os.environ.get("TARGET", "").lower()
     pr_number = os.environ.get("PR_NUMBER")
     
-    api_url = os.environ.get("API_URL")
+    api_url = os.environ.get("API_URL", "https://api.consensia.world/cli/analyze-diff")
     mode = os.environ.get("MODE", "BALANCED")
     rounds = int(os.environ.get("ROUNDS", 2))
 
@@ -43,7 +100,7 @@ def main():
         sys.exit(1)
 
     if target == "pr" and not pr_number:
-        print("Error: Target is 'pr', but PR_NUMBER is missing. Did you trigger this on a pull_request event?")
+        print("Error: Target is 'pr', but PR_NUMBER is missing.")
         sys.exit(1)
 
     try:
@@ -58,23 +115,21 @@ def main():
 
     print(f"Sending diff ({len(diff_text)} chars) to Consensia API ({mode} mode, {rounds} rounds)...")
     
-    response = requests.post(
-        api_url,
-        json={"diff_text": diff_text, "mode": mode, "scenario": "CODE_REVIEW", "rounds": rounds},
-        headers={"x-api-key": api_key, "Content-Type": "application/json"}
-    )
+    parsed = urlparse(api_url)
+    ws_scheme = "wss" if parsed.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{parsed.netloc}/ws/orchestrator"
+
+    verdict, tokens_used = asyncio.run(analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds))
     
-    if response.status_code != 200:
-        print(f"Consensia API Error: {response.text}")
+    if not verdict:
+        print("Failed to get final verdict from WebSocket.")
         sys.exit(1)
 
-    data = response.json()
-    verdict = data.get("verdict", {})
     inline_comments = verdict.get("inline_comments", [])
     
     general_summary = f"## 👨‍⚖️ AI Consensia Verdict: {verdict.get('title', 'Review')}\n\n"
     general_summary += verdict.get("summary", "")
-    general_summary += f"\n\n*⏱ Tokens used: {data.get('tokens_used', 0)}*"
+    general_summary += f"\n\n*⏱ Tokens used: {tokens_used}*"
 
     valid_inline = []
     unplaced_comments = []
