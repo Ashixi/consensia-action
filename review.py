@@ -117,7 +117,7 @@ def main():
     
     parsed = urlparse(api_url)
     ws_scheme = "wss" if parsed.scheme == "https" else "ws"
-    ws_url = f"{ws_scheme}://{parsed.netloc}/ws/orchestrator"
+    ws_url = f"{ws_scheme}://{parsed.netloc}/ws/cli/analyze-diff"
 
     verdict, tokens_used = asyncio.run(analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds))
     
