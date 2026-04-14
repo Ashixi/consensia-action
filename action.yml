@@ -1,5 +1,5 @@
 name: 'Consensia AI Reviewer'
-description: 'Automated PR Code Review using THE JUDGE AI'
+description: 'Automated PR and Commit Code Review using THE JUDGE AI'
 branding:
   icon: 'check-circle'
   color: 'blue'
@@ -9,6 +9,9 @@ inputs:
     required: true
   github-token:
     description: 'GitHub token for posting comments'
+    required: true
+  target:
+    description: 'What to review: "pr" (Pull Request) or "commit" (Direct Push)'
     required: true
   mode:
     description: 'Review mode (ECONOMY, BALANCED, MAX_POWER)'
@@ -38,11 +41,13 @@ runs:
       env:
         CONSENSIA_API_KEY: ${{ inputs.api-key }}
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        TARGET: ${{ inputs.target }}
         MODE: ${{ inputs.mode }}
         ROUNDS: ${{ inputs.rounds }}
         API_URL: ${{ inputs.api-url }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_NUMBER: ${{ github.event.pull_request.number || '' }}
         REPO: ${{ github.repository }}
-        COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        COMMIT_SHA: ${{ github.sha }}
+        GITHUB_BASE_REF: ${{ github.base_ref || '' }}
       run: python ${{ github.action_path }}/review.py
       shell: bash
