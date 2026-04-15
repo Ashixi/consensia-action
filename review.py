@@ -64,12 +64,15 @@ async def analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds):
                     print(f"🖥️ System: {event.get('msg')}")
                 elif event_type == "state_update":
                     status = event.get("data", {}).get("session_status", "processing")
-                    tokens_data = event.get("data", {}).get("tokens", {})
-                    tokens_used = tokens_data.get("prompt", 0) + tokens_data.get("completion", 0)
                 elif event_type == "agent_usage":
                     usage = event.get("usage", {})
                     agent = event.get("agent", "Agent")
-                    print(f"🤖 {agent} finished (Tokens: {usage.get('prompt', 0) + usage.get('completion', 0)})")
+                    agent_tokens = usage.get('prompt', 0) + usage.get('completion', 0)
+                    
+                    # ПЛЮСУЄМО токени від кожного агента
+                    tokens_used += agent_tokens
+                    
+                    print(f"🤖 {agent} finished (Tokens: {agent_tokens})")
                 elif event_type == "final_verdict":
                     final_verdict = event.get("content")
                     break
@@ -129,7 +132,7 @@ def main():
     
     general_summary = f"## 👨‍⚖️ AI Consensia Verdict: {verdict.get('title', 'Review')}\n\n"
     general_summary += verdict.get("summary", "")
-    general_summary += f"\n\n*⏱ Tokens used: {tokens_used}*"
+    general_summary += f"\n\n*⏱ Tokens used: {tokens_used}*\n*ℹ️ 1 Consensia credit = 1000 tokens*"
 
     valid_inline = []
     unplaced_comments = []
