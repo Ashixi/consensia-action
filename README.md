@@ -96,5 +96,15 @@ jobs:
 | `rounds` | No | `2` | Number of consensus rounds the AI agents will perform. |
 | `api-url` | No | `https://api.consensia.world/cli/analyze-diff` | Custom API URL (for self-hosting or testing). |
 ```
+## 🌐 Discover the Consensia Ecosystem
+
+This GitHub Action is just one part of the Consensia platform. Visit [consensia.world](https://consensia.world) to unlock the full potential of AI-driven code reviews:
+
+* **Web-Based Analysis:** Paste code snippets, upload files, or chat with the AI consensus team directly in your browser.
+* **Account Dashboard:** Manage your API keys, track your token usage, and review your past analysis sessions.
+* **Flexible Billing:** Use your free credits or upgrade to Consensia Pass for unlimited power.
+
+👉 **[Try the Web App](https://consensia.world)**
+
 ## 📝 License
 This project is licensed under the MIT License.
