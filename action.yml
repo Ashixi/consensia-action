@@ -1,6 +1,5 @@
 name: 'Consensia AI Reviewer'
-description: 'Automated PR and Commit Code Review using THE JUDGE AI'
-branding:
+description: 'AI Code Reviewer using multi-agent consensus to provide high-quality inline feedback.'branding:
   icon: 'check-circle'
   color: 'blue'
 inputs:
