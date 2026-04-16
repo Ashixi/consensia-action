@@ -107,6 +107,7 @@ This GitHub Action is just one part of the Consensia platform. Visit [consensia.
 ```
 ```
 👉 **[Try the Web App](https://consensia.world)**
+👉 **[Consensia repo](https://consensia.world)**
 
 ## 📝 License
 This project is licensed under the MIT License.
