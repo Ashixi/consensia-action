@@ -81,7 +81,7 @@ name: Consensia PR Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, edited]
 
 # IMPORTANT: These permissions are required to post comments on the PR
 permissions:
