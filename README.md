@@ -1,6 +1,7 @@
 # 🤖 Consensia AI Reviewer Action
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Dependency Security](https://img.shields.io/badge/Dependency%20Security-Enabled-brightgreen.svg)](#dependency-guard)
 
 Automated, AI-powered Code Review for your GitHub Commits and Pull Requests. 
 
@@ -23,6 +24,11 @@ Consensia integrates a multi-agent AI system (Security Sentinel, Performance Arc
 
 ## ✨ Features
 
+* **Autonomous Context:** Consensia is not just a linter. The AI autonomously explores your repository. If a `diff` references a new method, it automatically fetches its implementation from other files to uncover hidden vulnerabilities or logic bugs.
+* **Team Styleguide Integration:** Consensia reads your `.consensia.yml`, `.eslintrc`, or `CONTRIBUTING.md` and follows your naming and architecture standards, reducing false positives.
+* **Incremental Analysis (Smart Retries):** On PR updates, Consensia remembers previous analysis and focuses on whether previously found bugs are fixed, saving tokens and time.
+* **Dependency Guard:** Security Sentinel now audits any changes to `package.json` or `requirements.txt` for suspicious libraries or vulnerable versions.
+* **Accurate Inline Comments:** Improved line mapping ensures comments land precisely, minimizing GitHub API errors.
 * **Multi-Agent Consensus:** Not just one LLM, but a team of specialized AI agents analyzing your code from different perspectives.
 * **Inline Comments & Auto-Suggestions:** Posts feedback directly on the specific lines of code. It can even provide ready-to-commit code suggestions (`suggestion` blocks) for quick fixes.
 * **Smart Build Blocking:** Configure the action to automatically fail the CI/CD pipeline (exit code 1) if **CRITICAL** bugs or security vulnerabilities are found.
@@ -146,10 +152,29 @@ Here is a detailed list of all the inputs you can pass to the `with:` section of
 | `api-key` | **Yes** | - | Your Consensia CLI API Key. Pass via `${{ secrets.CONSENSIA_API_KEY }}`. |
 | `github-token` | **Yes** | - | Passed as `${{ secrets.GITHUB_TOKEN }}`. Used by the action to interact with the GitHub API to post comments. |
 | `target` | **Yes** | - | What to review. Valid options: `pr` (Pull Request) or `commit` (Direct push). |
-| `mode` | No | `BALANCED` | AI Analysis depth. Options:<br>• `ECONOMY` (Cheaper, smaller context)<br>• `BALANCED` (Standard approach)<br>• `MAX_POWER` (Deepest analysis, uses more tokens). |
+| `mode` | No | `BALANCED` | AI Analysis depth. Options:<br>• `ECONOMY` (Cheaper, smaller context)<br>• `BALANCED` (Standard approach)<br>• `MAX_POWER` (Deepest analysis, includes deep dependency analysis with Dependency Guard, uses more tokens). |
 | `rounds` | No | `2` | Number of internal consensus rounds the AI agents will perform before giving the final verdict. |
 | `fail-on-critical` | No | `false` | If set to `true`, the Action will fail (exit code 1) and block the PR if the AI flags any issue as `CRITICAL`. |
+| `session-id` | No | - | Session identifier for incremental analysis. For PRs, use `${{ github.event.pull_request.number }}`. |
 | `api-url` | No | `https://api.consensia.world/cli/analyze-diff` | Custom API URL. Useful if you are self-hosting the backend or testing. |
+
+---
+
+## 🛡️ Dependency Guard
+
+Any change to your dependencies (`package.json`, `requirements.txt`, etc.) is strictly audited for suspicious libraries or vulnerable versions by the Security Sentinel agent.
+
+---
+
+## 🧩 Example: Custom Rules File
+
+You can easily configure Consensia to follow your team's styleguide. Example `.consensia.yml`:
+
+```yaml
+rules:
+  use_tabs: false
+  prefer_functional_programming: true
+```
 
 ---
 
