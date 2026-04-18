@@ -7,6 +7,41 @@ import asyncio
 import websockets
 from urllib.parse import urlparse
 
+def get_repo_file_tree():
+    try:
+        result = subprocess.run(
+            ["git", "ls-files"],
+            capture_output=True, text=True, check=True
+        )
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to get file tree: {e}")
+        return []
+
+def get_user_context(target_type, repo, pr_number, commit_sha, gh_token):
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "Authorization": f"Bearer {gh_token}",
+        "X-GitHub-Api-Version": "2022-11-28"
+    }
+    context_text = ""
+    try:
+        if target_type == "pr" and pr_number:
+            url = f"[https://api.github.com/repos/](https://api.github.com/repos/){repo}/pulls/{pr_number}"
+            resp = requests.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                context_text = f"PR Title: {data.get('title', '')}\nPR Body: {data.get('body', '')}"
+        elif target_type == "commit" and commit_sha:
+            url = f"[https://api.github.com/repos/](https://api.github.com/repos/){repo}/commits/{commit_sha}"
+            resp = requests.get(url, headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                context_text = f"Commit Message: {data.get('commit', {}).get('message', '')}"
+    except Exception as e:
+        print(f"Failed to fetch context: {e}")
+    return context_text
+
 def get_diff(target_type):
     if target_type == "pr":
         base_ref = os.environ.get("GITHUB_BASE_REF")
@@ -15,19 +50,19 @@ def get_diff(target_type):
             sys.exit(1)
         subprocess.run(["git", "fetch", "origin", base_ref], check=True)
         result = subprocess.run(
-            ["git", "diff", f"origin/{base_ref}...HEAD"], 
+            ["git", "diff", "-U1", f"origin/{base_ref}...HEAD"], 
             capture_output=True, text=True, check=True
         )
     elif target_type == "commit":
         try:
             result = subprocess.run(
-                ["git", "diff", "HEAD~1", "HEAD"], 
+                ["git", "diff", "-U1", "HEAD~1", "HEAD"], 
                 capture_output=True, text=True, check=True
             )
         except subprocess.CalledProcessError:
             EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
             result = subprocess.run(
-                ["git", "diff", EMPTY_TREE_HASH, "HEAD"], 
+                ["git", "diff", "-U1", EMPTY_TREE_HASH, "HEAD"], 
                 capture_output=True, text=True, check=True
             )
     else:
@@ -36,7 +71,7 @@ def get_diff(target_type):
         
     return result.stdout.strip()
 
-async def analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds):
+async def analyze_via_websocket(ws_url, api_key, diff_text, context_text, file_tree, mode, rounds):
     print(f"Connecting to WebSocket: {ws_url}")
     
     async with websockets.connect(ws_url) as websocket:
@@ -45,6 +80,8 @@ async def analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds):
             "mode": mode,
             "scenario": "CODE_REVIEW",
             "code": diff_text,
+            "context": context_text,
+            "file_tree": file_tree,
             "rounds": rounds
         }
         await websocket.send(json.dumps(init_data))
@@ -62,16 +99,34 @@ async def analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds):
                     continue 
                 elif event_type == "system":
                     print(f"🖥️ System: {event.get('msg')}")
+                elif event_type == "request_files":
+                    requested_files = event.get("files", [])
+                    print(f"📂 AI requested full files: {requested_files}")
+                    documents = []
+                    
+                    for filepath in requested_files:
+                        if ".." not in filepath and os.path.isfile(filepath):
+                            try:
+                                with open(filepath, "r", encoding="utf-8") as f:
+                                    content = f.read()
+                                documents.append({"name": filepath, "content": content})
+                            except Exception as e:
+                                print(f"⚠️ Could not read {filepath}: {e}")
+                        else:
+                            print(f"⚠️ Invalid or missing file path: {filepath}")
+
+                    await websocket.send(json.dumps({
+                        "type": "provide_files",
+                        "documents": documents
+                    }))
+                    
                 elif event_type == "state_update":
                     status = event.get("data", {}).get("session_status", "processing")
                 elif event_type == "agent_usage":
                     usage = event.get("usage", {})
                     agent = event.get("agent", "Agent")
                     agent_tokens = usage.get('prompt', 0) + usage.get('completion', 0)
-                    
-                    # ПЛЮСУЄМО токени від кожного агента
                     tokens_used += agent_tokens
-                    
                     print(f"🤖 {agent} finished (Tokens: {agent_tokens})")
                 elif event_type == "final_verdict":
                     final_verdict = event.get("content")
@@ -94,9 +149,11 @@ def main():
     target = os.environ.get("TARGET", "").lower()
     pr_number = os.environ.get("PR_NUMBER")
     
-    api_url = os.environ.get("API_URL", "https://api.consensia.world/cli/analyze-diff")
+    api_url = os.environ.get("API_URL", "[https://api.consensia.world/cli/analyze-diff](https://api.consensia.world/cli/analyze-diff)")
     mode = os.environ.get("MODE", "BALANCED")
     rounds = int(os.environ.get("ROUNDS", 2))
+    
+    fail_on_critical = os.environ.get("FAIL_ON_CRITICAL", "false").lower() == "true"
 
     if not all([api_key, gh_token, repo, commit_sha, target]):
         print("Missing required environment variables.")
@@ -116,13 +173,19 @@ def main():
         print("No changes found in diff. Skipping review.")
         sys.exit(0)
 
+    print("Gathering repository context...")
+    context_text = get_user_context(target, repo, pr_number, commit_sha, gh_token)
+    file_tree = get_repo_file_tree()
+
     print(f"Sending diff ({len(diff_text)} chars) to Consensia API ({mode} mode, {rounds} rounds)...")
     
     parsed = urlparse(api_url)
     ws_scheme = "wss" if parsed.scheme == "https" else "ws"
     ws_url = f"{ws_scheme}://{parsed.netloc}/ws/cli/analyze-diff"
 
-    verdict, tokens_used = asyncio.run(analyze_via_websocket(ws_url, api_key, diff_text, mode, rounds))
+    verdict, tokens_used = asyncio.run(analyze_via_websocket(
+        ws_url, api_key, diff_text, context_text, file_tree, mode, rounds
+    ))
     
     if not verdict:
         print("Failed to get final verdict from WebSocket.")
@@ -136,14 +199,23 @@ def main():
 
     valid_inline = []
     unplaced_comments = []
+    has_critical = False
 
     for c in inline_comments:
+        if c.get("type") == "CRITICAL":
+            has_critical = True
+            
         if c.get("path") and c.get("line"):
             icon = "🚨" if c.get("type") == "CRITICAL" else "💡"
+            
+            body_text = f"{icon} **{c.get('type')}**: {c.get('body')}"
+            if c.get("suggestion"):
+                body_text += f"\n\n```suggestion\n{c.get('suggestion')}\n```"
+                
             valid_inline.append({
                 "path": c.get("path"),
                 "line": int(c.get("line")),
-                "body": f"{icon} **{c.get('type')}**: {c.get('body')}"
+                "body": body_text
             })
         else:
             unplaced_comments.append(c)
@@ -163,7 +235,7 @@ def main():
     print("Posting review to GitHub...")
 
     if target == "pr":
-        gh_api_base = f"https://api.github.com/repos/{repo}/pulls/{pr_number}/reviews"
+        gh_api_base = f"[https://api.github.com/repos/](https://api.github.com/repos/){repo}/pulls/{pr_number}/reviews"
         payload = {
             "commit_id": commit_sha,
             "event": "COMMENT",
@@ -185,7 +257,7 @@ def main():
             review_resp = requests.post(gh_api_base, json=fallback_payload, headers=headers)
             
     elif target == "commit":
-        gh_api_base = f"https://api.github.com/repos/{repo}/commits/{commit_sha}/comments"
+        gh_api_base = f"[https://api.github.com/repos/](https://api.github.com/repos/){repo}/commits/{commit_sha}/comments"
         fallback_body = general_summary + "\n\n### Detailed Issues:\n"
         if valid_inline:
             for c in valid_inline:
@@ -201,6 +273,10 @@ def main():
         sys.exit(1)
 
     print("Review posted successfully!")
+    
+    if has_critical and fail_on_critical:
+        print("🚨 Found CRITICAL issues. Failing the build because FAIL_ON_CRITICAL is set to true.")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
