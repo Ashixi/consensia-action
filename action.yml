@@ -8,7 +8,7 @@ inputs:
     description: 'Consensia CLI API Key'
     required: true
   github-token:
-    description: 'GitHub token for posting comments'
+    description: 'GitHub token for posting comments and committing fixes'
     required: true
   target:
     description: 'What to review: "pr" (Pull Request) or "commit" (Direct Push)'
@@ -24,7 +24,7 @@ inputs:
   api-url:
     description: 'Custom API URL (for self-hosting or testing)'
     required: false
-    default: '[https://api.consensia.world/cli/analyze-diff](https://api.consensia.world/cli/analyze-diff)' 
+    default: 'https://api.consensia.world/cli/analyze-diff' 
   fail-on-critical:
     description: 'Should the build be terminated if CRITICAL errors are found?'
     required: false
@@ -38,7 +38,7 @@ runs:
         python-version: '3.10'
     
     - name: Install dependencies
-      run: pip install requests websockets
+      run: pip install requests websockets pyyaml
       shell: bash
 
     - name: Run Consensia Review
@@ -50,9 +50,11 @@ runs:
         ROUNDS: ${{ inputs.rounds }}
         API_URL: ${{ inputs.api-url }}
         FAIL_ON_CRITICAL: ${{ inputs.fail-on-critical }}
-        PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || '' }}
         REPO: ${{ github.repository }}
         COMMIT_SHA: ${{ github.sha }}
         GITHUB_BASE_REF: ${{ github.base_ref || '' }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_EVENT_PATH: ${{ github.event_path }}
       run: python ${{ github.action_path }}/review.py
       shell: bash
