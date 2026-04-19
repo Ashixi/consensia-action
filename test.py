@@ -27,3 +27,5 @@ def process_math_expression(user_input):
 if __name__ == "__main__":
     print("User profile:", get_user_profile("admin' --")) 
     print("Calculation:", process_math_expression("2 + 2"))
+    
+# Testing AI
