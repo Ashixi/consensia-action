@@ -30,4 +30,4 @@ jobs:
           target: 'pr'
           mode: 'BALANCED'
           rounds: '2'
-          fail-on-critical: 'false'
+          fail-on-critical: 'true'
