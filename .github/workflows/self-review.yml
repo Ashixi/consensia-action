@@ -1,0 +1,33 @@
+name: Consensia Self-Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write       
+  pull-requests: write  
+  issues: write         
+
+jobs:
+  review:
+    if: github.event_name == 'pull_request' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Run Consensia AI Reviewer
+        uses: ./ 
+        with:
+          api-key: ${{ secrets.CONSENSIA_API_KEY }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          target: 'pr'
+          mode: 'BALANCED'
+          rounds: '2'
+          fail-on-critical: 'false'
